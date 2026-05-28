@@ -884,10 +884,35 @@ function renderExtrato(){
 
   const rec=somaE(filtrados), desp=somaS(filtrados), sal=rec-desp;
 
+  // Saldo anterior ao período — tudo antes da data inicial
+  const perfisEx=exPerfil==='amb'?['pj','pf']:[exPerfil];
+  const anteriores=dados.filter(l=>{
+    if(!perfisEx.includes(l.p)) return false;
+    if(window.exBanco!=='todos'&&l.b!==window.exBanco&&l.bdest!==window.exBanco) return false;
+    if(exDtIni&&l.dt>=exDtIni) return false;
+    if(l.t==='t') return false; // transferência não entra no saldo geral
+    return true;
+  });
+  const saldoAnterior=somaE(anteriores)-somaS(anteriores);
+  const saldoFinal=saldoAnterior+sal;
+
+  // Card de saldo completo
   h+=`<div class="extrato-saldo-card ${exPerfil==='pf'?'pf-mode':''}">
-    <div class="esc-label">Resultado do período</div>
-    <div class="esc-val ${sal>=0?'pos':'neg'}">${fmt(sal)}</div>
-    <div class="esc-note">Receitas: ${fmt(rec)} · Despesas: ${fmt(desp)}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">
+      <div style="text-align:center">
+        <div class="esc-label">Saldo Anterior</div>
+        <div style="font-size:14px;font-weight:900;color:${saldoAnterior>=0?'var(--green)':'var(--danger)'};">${fmt(saldoAnterior)}</div>
+      </div>
+      <div style="text-align:center">
+        <div class="esc-label">Período</div>
+        <div style="font-size:14px;font-weight:900;color:${sal>=0?'var(--green)':'var(--danger)'};">${sal>=0?'+':''}${fmt(sal)}</div>
+      </div>
+      <div style="text-align:center">
+        <div class="esc-label">Saldo Final</div>
+        <div style="font-size:16px;font-weight:900;color:${saldoFinal>=0?'var(--green)':'var(--danger)'};">${fmt(saldoFinal)}</div>
+      </div>
+    </div>
+    <div class="esc-note" style="text-align:center">Entradas: ${fmt(rec)} · Saídas: ${fmt(desp)}</div>
   </div>`;
 
   // Botão exportar Excel
@@ -898,15 +923,17 @@ function renderExtrato(){
     return h;
   }
 
-  // Agrupa por dia
+  // Agrupa por dia — saldo acumulado correndo
   const porDia={};
   filtrados.forEach(l=>{if(!porDia[l.dt])porDia[l.dt]=[];porDia[l.dt].push(l)});
-  let sc=0;
-  Object.keys(porDia).sort().reverse().forEach(dia=>{
+  let sc=saldoAnterior; // começa do saldo anterior
+  Object.keys(porDia).sort().forEach(dia=>{
     const itens=porDia[dia];
-    const eD=somaE(itens), sD=somaS(itens);
+    const eD=itens.filter(l=>l.t==='e').reduce((s,l)=>s+l.v,0);
+    const sD=itens.filter(l=>l.t==='s').reduce((s,l)=>s+l.v,0);
+    sc+=eD-sD;
     h+=`<div class="dia-group">
-      <div class="dia-header">${dia===hoje()?'📍 Hoje — ':''}${dataFmt(dia)}<span class="dia-saldo ${(eD-sD)>=0?'pos':'neg'}">${eD-sD>=0?'+':''}${fmt(eD-sD)}</span></div>
+      <div class="dia-header">${dia===hoje()?'📍 Hoje — ':''}${dataFmt(dia)}<span class="dia-saldo ${sc>=0?'pos':'neg'}">${fmt(sc)}</span></div>
       ${itens.map(rLanc).join('')}
     </div>`;
   });
